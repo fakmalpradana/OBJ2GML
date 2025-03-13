@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,28 +14,39 @@ import (
 	"time"
 )
 
-// CityGML structures based on the provided schema
-type CityGML struct {
-	XMLName   xml.Name `xml:"CityModel"`
-	GML       string   `xml:"xmlns:gml,attr"`
-	CityGML   string   `xml:"xmlns:citygml,attr"`
-	Bldg      string   `xml:"xmlns:bldg,attr"`
-	XLink     string   `xml:"xmlns:xlink,attr"`
-	XSI       string   `xml:"xmlns:xsi,attr"`
-	SchemaLoc string   `xml:"xsi:schemaLocation,attr"`
+// XML namespaces and schema declarations
+const (
+	xmlHeader = `<?xml version="1.0" encoding="UTF-8"?>
+<!-- OBJ to CityGML Converter Output -->
+`
+)
 
-	BoundedBy        BoundedBy          `xml:"boundedBy"`
-	CityObjectMember []CityObjectMember `xml:"cityObjectMember"`
+// CityGML structures based on the provided schema
+type CityModel struct {
+	XMLName        xml.Name `xml:"core:CityModel"`
+	GML            string   `xml:"xmlns:gml,attr"`
+	Core           string   `xml:"xmlns:core,attr"`
+	Bldg           string   `xml:"xmlns:bldg,attr"`
+	App            string   `xml:"xmlns:app,attr"`
+	Gen            string   `xml:"xmlns:gen,attr"`
+	Grp            string   `xml:"xmlns:grp,attr"`
+	XLink          string   `xml:"xmlns:xlink,attr"`
+	XSI            string   `xml:"xmlns:xsi,attr"`
+	SchemaLocation string   `xml:"xsi:schemaLocation,attr"`
+
+	BoundedBy        BoundedBy          `xml:"gml:boundedBy"`
+	CityObjectMember []CityObjectMember `xml:"core:cityObjectMember"`
 }
 
 type BoundedBy struct {
-	Envelope Envelope `xml:"Envelope"`
+	Envelope Envelope `xml:"gml:Envelope"`
 }
 
 type Envelope struct {
-	SrsName     string `xml:"srsName,attr"`
-	LowerCorner string `xml:"lowerCorner"`
-	UpperCorner string `xml:"upperCorner"`
+	SrsName      string `xml:"srsName,attr"`
+	SrsDimension string `xml:"srsDimension,attr,omitempty"`
+	LowerCorner  string `xml:"gml:lowerCorner"`
+	UpperCorner  string `xml:"gml:upperCorner"`
 }
 
 type CityObjectMember struct {
@@ -42,12 +54,18 @@ type CityObjectMember struct {
 }
 
 type Building struct {
-	ID                 string    `xml:"gml:id,attr"`
-	Function           string    `xml:"bldg:function,omitempty"`
-	YearOfConstruction string    `xml:"bldg:yearOfConstruction,omitempty"`
-	RoofType           string    `xml:"bldg:roofType,omitempty"`
-	MeasuredHeight     string    `xml:"bldg:measuredHeight,omitempty"`
-	Lod1Solid          Lod1Solid `xml:"bldg:lod1Solid"`
+	ID                 string             `xml:"gml:id,attr"`
+	Function           string             `xml:"bldg:function,omitempty"`
+	YearOfConstruction string             `xml:"bldg:yearOfConstruction,omitempty"`
+	RoofType           string             `xml:"bldg:roofType,omitempty"`
+	MeasuredHeight     MeasuredHeight     `xml:"bldg:measuredHeight,omitempty"`
+	Lod1Solid          Lod1Solid          `xml:"bldg:lod1Solid"`
+	BoundedBy          []BoundedBySurface `xml:"bldg:boundedBy,omitempty"`
+}
+
+type MeasuredHeight struct {
+	Value string `xml:",chardata"`
+	UOM   string `xml:"uom,attr"`
 }
 
 type Lod1Solid struct {
@@ -84,6 +102,35 @@ type LinearRing struct {
 	PosList string `xml:"gml:posList"`
 }
 
+type BoundedBySurface struct {
+	WallSurface   WallSurface   `xml:"bldg:WallSurface,omitempty"`
+	RoofSurface   RoofSurface   `xml:"bldg:RoofSurface,omitempty"`
+	GroundSurface GroundSurface `xml:"bldg:GroundSurface,omitempty"`
+}
+
+type WallSurface struct {
+	ID               string               `xml:"gml:id,attr"`
+	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
+}
+
+type RoofSurface struct {
+	ID               string               `xml:"gml:id,attr"`
+	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
+}
+
+type GroundSurface struct {
+	ID               string               `xml:"gml:id,attr"`
+	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
+}
+
+type MultiSurfaceProperty struct {
+	MultiSurface MultiSurface `xml:"gml:MultiSurface"`
+}
+
+type MultiSurface struct {
+	SurfaceMember []SurfaceMember `xml:"gml:surfaceMember"`
+}
+
 // OBJ file structures
 type OBJVertex struct {
 	X, Y, Z float64
@@ -91,16 +138,21 @@ type OBJVertex struct {
 
 type OBJFace []int
 
+// Vector3D represents a 3D vector
+type Vector3D struct {
+	X, Y, Z float64
+}
+
 // Main function
 func main() {
 	// Parse command-line arguments
 	inputDir := flag.String("input", "", "Directory containing OBJ files")
 	outputDir := flag.String("output", "", "Directory for output CityGML files")
-	epsg := flag.String("epsg", "", "EPSG Code")
+	epsgCode := flag.String("epsg", "32748", "EPSG code for the coordinate reference system")
 	flag.Parse()
 
 	if *inputDir == "" || *outputDir == "" {
-		fmt.Println("Usage: obj2citygml -input <input_directory> -output <output_directory>")
+		fmt.Println("Usage: obj2citygml -input <input_directory> -output <output_directory> [-epsg <epsg_code>]")
 		return
 	}
 
@@ -127,7 +179,7 @@ func main() {
 		fileNameWithoutExt := strings.TrimSuffix(baseFileName, filepath.Ext(baseFileName))
 		outputFile := filepath.Join(*outputDir, fileNameWithoutExt+".gml")
 
-		err := convertOBJToCityGML(*epsg, objFile, outputFile, fileNameWithoutExt)
+		err := convertOBJToCityGML(objFile, outputFile, fileNameWithoutExt, *epsgCode)
 		if err != nil {
 			fmt.Printf("Error processing %s: %v\n", baseFileName, err)
 			errorFiles = append(errorFiles, baseFileName)
@@ -143,8 +195,61 @@ func main() {
 	}
 }
 
+// Calculate normal vector for a triangle
+func calculateNormal(v1, v2, v3 OBJVertex) Vector3D {
+	// Calculate vectors from v1 to v2 and v1 to v3
+	ux := v2.X - v1.X
+	uy := v2.Y - v1.Y
+	uz := v2.Z - v1.Z
+
+	vx := v3.X - v1.X
+	vy := v3.Y - v1.Y
+	vz := v3.Z - v1.Z
+
+	// Cross product
+	nx := uy*vz - uz*vy
+	ny := uz*vx - ux*vz
+	nz := ux*vy - uy*vx
+
+	// Normalize
+	length := math.Sqrt(nx*nx + ny*ny + nz*nz)
+	if length > 0 {
+		nx /= length
+		ny /= length
+		nz /= length
+	}
+
+	return Vector3D{X: nx, Y: ny, Z: nz}
+}
+
+// Ensure consistent winding order for face
+func ensureConsistentWindingOrder(vertices []OBJVertex, face OBJFace) OBJFace {
+	if len(face) < 3 {
+		return face
+	}
+
+	// Get vertices for the face
+	v1 := vertices[face[0]-1]
+	v2 := vertices[face[1]-1]
+	v3 := vertices[face[2]-1]
+
+	// Calculate normal
+	normal := calculateNormal(v1, v2, v3)
+
+	// If normal is pointing inward (negative Z), reverse the winding order
+	// This is a simplification - in a real application, you'd need a more sophisticated check
+	if normal.Z < 0 {
+		// Reverse the face indices
+		for i, j := 0, len(face)-1; i < j; i, j = i+1, j-1 {
+			face[i], face[j] = face[j], face[i]
+		}
+	}
+
+	return face
+}
+
 // Convert OBJ file to CityGML
-func convertOBJToCityGML(epsg, inputPath, outputPath, buildingID string) error {
+func convertOBJToCityGML(inputPath, outputPath, buildingID, epsgCode string) error {
 	// Read and parse OBJ file
 	vertices, faces, err := parseOBJFile(inputPath)
 	if err != nil {
@@ -180,19 +285,22 @@ func convertOBJToCityGML(epsg, inputPath, outputPath, buildingID string) error {
 	height := maxZ - minZ
 
 	// Create CityGML structure
-	cityGML := CityGML{
-		GML:       "http://www.opengis.net/gml",
-		CityGML:   "http://www.opengis.net/citygml/2.0",
-		Bldg:      "http://www.opengis.net/citygml/building/2.0",
-		XLink:     "http://www.w3.org/1999/xlink",
-		XSI:       "http://www.w3.org/2001/XMLSchema-instance",
-		SchemaLoc: "http://www.opengis.net/citygml/building/2.0 http://schemas.opengis.net/citygml/building/2.0/building.xsd",
+	cityModel := CityModel{
+		GML:            "http://www.opengis.net/gml",
+		Core:           "http://www.opengis.net/citygml/2.0",
+		Bldg:           "http://www.opengis.net/citygml/building/2.0",
+		App:            "http://www.opengis.net/citygml/appearance/2.0",
+		Gen:            "http://www.opengis.net/citygml/generics/2.0",
+		Grp:            "http://www.opengis.net/citygml/cityobjectgroup/2.0",
+		XLink:          "http://www.w3.org/1999/xlink",
+		XSI:            "http://www.w3.org/2001/XMLSchema-instance",
+		SchemaLocation: "http://www.opengis.net/citygml/2.0 http://schemas.opengis.net/citygml/2.0/cityGMLBase.xsd http://www.opengis.net/citygml/building/2.0 http://schemas.opengis.net/citygml/building/2.0/building.xsd",
 		BoundedBy: BoundedBy{
 			Envelope: Envelope{
-				// SrsName:     "urn:ogc:def:crs:EPSG::32748",
-				SrsName:     fmt.Sprintf("%s %s", "urn:ogc:def:crs:EPSG::", epsg),
-				LowerCorner: fmt.Sprintf("%f %f %f", minX, minY, minZ),
-				UpperCorner: fmt.Sprintf("%f %f %f", maxX, maxY, maxZ),
+				SrsName:      fmt.Sprintf("http://www.opengis.net/def/crs/EPSG/0/%s", epsgCode),
+				SrsDimension: "3",
+				LowerCorner:  fmt.Sprintf("%f %f %f", minX, minY, minZ),
+				UpperCorner:  fmt.Sprintf("%f %f %f", maxX, maxY, maxZ),
 			},
 		},
 	}
@@ -201,8 +309,11 @@ func convertOBJToCityGML(epsg, inputPath, outputPath, buildingID string) error {
 	building := Building{
 		ID:                 buildingID,
 		YearOfConstruction: strconv.Itoa(time.Now().Year()),
-		MeasuredHeight:     fmt.Sprintf("%f", height),
 		RoofType:           "1000", // Default roof type
+		MeasuredHeight: MeasuredHeight{
+			Value: fmt.Sprintf("%.2f", height),
+			UOM:   "m",
+		},
 		Lod1Solid: Lod1Solid{
 			Solid: Solid{
 				ID: fmt.Sprintf("%s-solid", buildingID),
@@ -214,7 +325,14 @@ func convertOBJToCityGML(epsg, inputPath, outputPath, buildingID string) error {
 	}
 
 	// Add faces to the building
+	wallFaces := []SurfaceMember{}
+	roofFaces := []SurfaceMember{}
+	groundFaces := []SurfaceMember{}
+
 	for i, face := range faces {
+		// Ensure consistent winding order for this face
+		face = ensureConsistentWindingOrder(vertices, face)
+
 		polygonID := fmt.Sprintf("%s-polygon-%d", buildingID, i)
 
 		// Create posList from face vertices
@@ -246,24 +364,89 @@ func convertOBJToCityGML(epsg, inputPath, outputPath, buildingID string) error {
 			},
 		}
 
+		// Classify surface based on normal vector
+		if len(face) >= 3 {
+			v1 := vertices[face[0]-1]
+			v2 := vertices[face[1]-1]
+			v3 := vertices[face[2]-1]
+
+			normal := calculateNormal(v1, v2, v3)
+
+			// Improved classification logic
+			// If normal.Z is close to 1, it's pointing up (roof)
+			// If normal.Z is close to -1, it's pointing down (ground)
+			// Otherwise, it's likely a wall
+			if normal.Z > 0.7 {
+				roofFaces = append(roofFaces, surfaceMember)
+			} else if normal.Z < -0.7 {
+				groundFaces = append(groundFaces, surfaceMember)
+			} else {
+				wallFaces = append(wallFaces, surfaceMember)
+			}
+		} else {
+			// Default to wall if we can't determine orientation
+			wallFaces = append(wallFaces, surfaceMember)
+		}
+
+		// Add to general building geometry
 		building.Lod1Solid.Solid.Exterior.CompositeSurface.SurfaceMember = append(
 			building.Lod1Solid.Solid.Exterior.CompositeSurface.SurfaceMember, surfaceMember)
+	}
+
+	// Add semantic surfaces if we have classified them
+	if len(wallFaces) > 0 {
+		building.BoundedBy = append(building.BoundedBy, BoundedBySurface{
+			WallSurface: WallSurface{
+				ID: fmt.Sprintf("%s-wall", buildingID),
+				Lod2MultiSurface: MultiSurfaceProperty{
+					MultiSurface: MultiSurface{
+						SurfaceMember: wallFaces,
+					},
+				},
+			},
+		})
+	}
+
+	if len(roofFaces) > 0 {
+		building.BoundedBy = append(building.BoundedBy, BoundedBySurface{
+			RoofSurface: RoofSurface{
+				ID: fmt.Sprintf("%s-roof", buildingID),
+				Lod2MultiSurface: MultiSurfaceProperty{
+					MultiSurface: MultiSurface{
+						SurfaceMember: roofFaces,
+					},
+				},
+			},
+		})
+	}
+
+	if len(groundFaces) > 0 {
+		building.BoundedBy = append(building.BoundedBy, BoundedBySurface{
+			GroundSurface: GroundSurface{
+				ID: fmt.Sprintf("%s-ground", buildingID),
+				Lod2MultiSurface: MultiSurfaceProperty{
+					MultiSurface: MultiSurface{
+						SurfaceMember: groundFaces,
+					},
+				},
+			},
+		})
 	}
 
 	// Add building to city model
 	cityObjectMember := CityObjectMember{
 		Building: building,
 	}
-	cityGML.CityObjectMember = append(cityGML.CityObjectMember, cityObjectMember)
+	cityModel.CityObjectMember = append(cityModel.CityObjectMember, cityObjectMember)
 
 	// Generate XML
-	output, err := xml.MarshalIndent(cityGML, "", "  ")
+	output, err := xml.MarshalIndent(cityModel, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to generate XML: %v", err)
 	}
 
 	// Add XML header
-	xmlData := []byte(xml.Header + string(output))
+	xmlData := []byte(xmlHeader + string(output))
 
 	// Write to file
 	if err := ioutil.WriteFile(outputPath, xmlData, 0644); err != nil {
