@@ -17,7 +17,8 @@ import (
 // XML namespaces and schema declarations
 const (
 	xmlHeader = `<?xml version="1.0" encoding="UTF-8"?>
-<!-- OBJ to CityGML Converter Output -->
+<!-- OBJ to CityGML Converter Output - Complete Model Preservation -->
+<!-- copyrights 2025 © Fairuz Akmal Pradana | fakmalpradana@gmail.com  -->
 `
 )
 
@@ -54,13 +55,12 @@ type CityObjectMember struct {
 }
 
 type Building struct {
-	ID                 string             `xml:"gml:id,attr"`
-	Function           string             `xml:"bldg:function,omitempty"`
-	YearOfConstruction string             `xml:"bldg:yearOfConstruction,omitempty"`
-	RoofType           string             `xml:"bldg:roofType,omitempty"`
-	MeasuredHeight     MeasuredHeight     `xml:"bldg:measuredHeight,omitempty"`
-	Lod1Solid          Lod1Solid          `xml:"bldg:lod1Solid"`
-	BoundedBy          []BoundedBySurface `xml:"bldg:boundedBy,omitempty"`
+	ID                 string         `xml:"gml:id,attr"`
+	Function           string         `xml:"bldg:function,omitempty"`
+	YearOfConstruction string         `xml:"bldg:yearOfConstruction,omitempty"`
+	RoofType           string         `xml:"bldg:roofType,omitempty"`
+	MeasuredHeight     MeasuredHeight `xml:"bldg:measuredHeight,omitempty"`
+	Lod1Solid          Lod1Solid      `xml:"bldg:lod1Solid"`
 }
 
 type MeasuredHeight struct {
@@ -100,35 +100,6 @@ type PolygonExterior struct {
 
 type LinearRing struct {
 	PosList string `xml:"gml:posList"`
-}
-
-type BoundedBySurface struct {
-	WallSurface   WallSurface   `xml:"bldg:WallSurface,omitempty"`
-	RoofSurface   RoofSurface   `xml:"bldg:RoofSurface,omitempty"`
-	GroundSurface GroundSurface `xml:"bldg:GroundSurface,omitempty"`
-}
-
-type WallSurface struct {
-	ID               string               `xml:"gml:id,attr"`
-	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
-}
-
-type RoofSurface struct {
-	ID               string               `xml:"gml:id,attr"`
-	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
-}
-
-type GroundSurface struct {
-	ID               string               `xml:"gml:id,attr"`
-	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
-}
-
-type MultiSurfaceProperty struct {
-	MultiSurface MultiSurface `xml:"gml:MultiSurface"`
-}
-
-type MultiSurface struct {
-	SurfaceMember []SurfaceMember `xml:"gml:surfaceMember"`
 }
 
 // OBJ file structures
@@ -324,11 +295,7 @@ func convertOBJToCityGML(inputPath, outputPath, buildingID, epsgCode string) err
 		},
 	}
 
-	// Add faces to the building
-	wallFaces := []SurfaceMember{}
-	roofFaces := []SurfaceMember{}
-	groundFaces := []SurfaceMember{}
-
+	// Add ALL faces to the building without any filtering or classification
 	for i, face := range faces {
 		// Ensure consistent winding order for this face
 		face = ensureConsistentWindingOrder(vertices, face)
@@ -364,73 +331,9 @@ func convertOBJToCityGML(inputPath, outputPath, buildingID, epsgCode string) err
 			},
 		}
 
-		// Classify surface based on normal vector
-		if len(face) >= 3 {
-			v1 := vertices[face[0]-1]
-			v2 := vertices[face[1]-1]
-			v3 := vertices[face[2]-1]
-
-			normal := calculateNormal(v1, v2, v3)
-
-			// Improved classification logic
-			// If normal.Z is close to 1, it's pointing up (roof)
-			// If normal.Z is close to -1, it's pointing down (ground)
-			// Otherwise, it's likely a wall
-			if normal.Z > 0.7 {
-				roofFaces = append(roofFaces, surfaceMember)
-			} else if normal.Z < -0.7 {
-				groundFaces = append(groundFaces, surfaceMember)
-			} else {
-				wallFaces = append(wallFaces, surfaceMember)
-			}
-		} else {
-			// Default to wall if we can't determine orientation
-			wallFaces = append(wallFaces, surfaceMember)
-		}
-
-		// Add to general building geometry
+		// Add to general building geometry - include ALL faces
 		building.Lod1Solid.Solid.Exterior.CompositeSurface.SurfaceMember = append(
 			building.Lod1Solid.Solid.Exterior.CompositeSurface.SurfaceMember, surfaceMember)
-	}
-
-	// Add semantic surfaces if we have classified them
-	if len(wallFaces) > 0 {
-		building.BoundedBy = append(building.BoundedBy, BoundedBySurface{
-			WallSurface: WallSurface{
-				ID: fmt.Sprintf("%s-wall", buildingID),
-				Lod2MultiSurface: MultiSurfaceProperty{
-					MultiSurface: MultiSurface{
-						SurfaceMember: wallFaces,
-					},
-				},
-			},
-		})
-	}
-
-	if len(roofFaces) > 0 {
-		building.BoundedBy = append(building.BoundedBy, BoundedBySurface{
-			RoofSurface: RoofSurface{
-				ID: fmt.Sprintf("%s-roof", buildingID),
-				Lod2MultiSurface: MultiSurfaceProperty{
-					MultiSurface: MultiSurface{
-						SurfaceMember: roofFaces,
-					},
-				},
-			},
-		})
-	}
-
-	if len(groundFaces) > 0 {
-		building.BoundedBy = append(building.BoundedBy, BoundedBySurface{
-			GroundSurface: GroundSurface{
-				ID: fmt.Sprintf("%s-ground", buildingID),
-				Lod2MultiSurface: MultiSurfaceProperty{
-					MultiSurface: MultiSurface{
-						SurfaceMember: groundFaces,
-					},
-				},
-			},
-		})
 	}
 
 	// Add building to city model
