@@ -2,15 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"strings"
-
-	// geojson "github.com/paulmach/go.geojson"
-	"encoding/csv"
-	"encoding/json"
 )
 
 type Point struct {
@@ -42,19 +41,70 @@ type Tiles struct {
 }
 
 func main() {
-	filePath := os.Args
-	filePathGeojson := os.Args
-	fmt.Println(filePath, filePathGeojson)
+	// Define command-line flags
+	var cx, cy float64
+
+	// Create a new FlagSet to handle arguments
+	flagSet := flag.NewFlagSet("objseparator", flag.ExitOnError)
+
+	// Define flags
+	flagSet.Float64Var(&cx, "cx", 692827.46065, "X coordinate offset")
+	flagSet.Float64Var(&cy, "cy", 9326588.60235, "Y coordinate offset")
+
+	// Parse flags
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: go run objseparator.go [options] <obj_file> <geojson_file>")
+		fmt.Println("Options:")
+		flagSet.PrintDefaults()
+		os.Exit(1)
+	}
+
+	// Find where the actual file arguments start
+	argStart := 1
+	for i := 1; i < len(os.Args); i++ {
+		if strings.HasPrefix(os.Args[i], "-") {
+			continue
+		}
+		argStart = i
+		break
+	}
+
+	// Parse flags from args before the file paths
+	if err := flagSet.Parse(os.Args[1:argStart]); err != nil {
+		fmt.Println("Error parsing flags:", err)
+		os.Exit(1)
+	}
+
+	// Get file paths from remaining arguments
+	remainingArgs := os.Args[argStart:]
+	if len(remainingArgs) < 2 {
+		fmt.Println("Missing required file paths")
+		fmt.Println("Usage: go run objseparator.go [options] <obj_file> <geojson_file>")
+		os.Exit(1)
+	}
+
+	objFilePath := remainingArgs[0]
+	geojsonFilePath := remainingArgs[1]
+
+	fmt.Printf("Processing with parameters:\n")
+	fmt.Printf("  OBJ file: %s\n", objFilePath)
+	fmt.Printf("  GeoJSON file: %s\n", geojsonFilePath)
+	fmt.Printf("  CX: %.5f\n", cx)
+	fmt.Printf("  CY: %.5f\n", cy)
+
+	// Read files
+	data := ReadFile(objFilePath)
+	geoJSONString := ReadFile(geojsonFilePath)
+
 	var geojson map[string]interface{}
-	data := ReadFile(filePath[1])
-	geoJSONString := ReadFile(filePathGeojson[2])
 	err := json.Unmarshal(geoJSONString, &geojson)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error parsing GeoJSON:", err)
+		os.Exit(1)
 	}
 
 	var v, vn, Mesh = ReadMesh(data)
-	geoPolygon, extent := ReadGeomGeojson(geojson)
+	geoPolygon, extent := ReadGeomGeojson(geojson, cx, cy)
 	cent := []Point{}
 	index := []int{}
 
@@ -62,14 +112,13 @@ func main() {
 	// Proses Tiling agar mengurangi search pada geojson
 	tiles := CreateTiles(extent, 500, geoPolygon)
 	for i := 0; i < len(Mesh); i++ {
-		// cent = append(cent, Point{cx, cy, 0})
 		index = append(index, SearchIdInGeom(Mesh, geoPolygon, tiles, v, i, &cent))
 	}
 
-	WritePointsToCSV(cent, index, filePath[1]+".csv")
-	WriteToObj(filePath[1], index, Mesh, v, vn)
-
+	WritePointsToCSV(cent, index, objFilePath+".csv", cx, cy)
+	WriteToObj(objFilePath, index, Mesh, v, vn)
 }
+
 func SearchIdInGeom(Mesh [][][]Faces, geom []MultiPolygon, tile Tiles, v []Point, i int, cent *[]Point) int {
 	const defaultRes = 12030
 	res := defaultRes
@@ -117,7 +166,6 @@ func SearchIdInGeom(Mesh [][][]Faces, geom []MultiPolygon, tile Tiles, v []Point
 }
 
 func CreateTiles(extens Extent, size float64, geom []MultiPolygon) Tiles {
-
 	var tile Tiles
 	getExtent := func(points []Point) [4]Point {
 		var extent Extent
@@ -151,7 +199,6 @@ func CreateTiles(extens Extent, size float64, geom []MultiPolygon) Tiles {
 		}
 	}
 
-	// for i := 0; i < len(geom); i++ {
 	var processPolygon = func(index int, points []Point) {
 		if len(points) == 0 {
 			return
@@ -159,7 +206,6 @@ func CreateTiles(extens Extent, size float64, geom []MultiPolygon) Tiles {
 
 		extent := getExtent(points)
 		for _, extentPoint := range extent {
-
 			for _, child := range tile.childTiles {
 				if child.extent.maxX < extentPoint.X || child.extent.minX > extentPoint.X ||
 					child.extent.maxY < extentPoint.Y || child.extent.minY > extentPoint.Y {
@@ -171,7 +217,6 @@ func CreateTiles(extens Extent, size float64, geom []MultiPolygon) Tiles {
 				}
 			}
 		}
-
 	}
 
 	for i, g := range geom {
@@ -185,9 +230,9 @@ func CreateTiles(extens Extent, size float64, geom []MultiPolygon) Tiles {
 			processPolygon(i, island.outer)
 		}
 	}
-	// }
 	return tile
 }
+
 func WriteToObj(baseFilename string, index []int, Mesh [][][]Faces, vertices []Point, normals []Point) {
 	// Map untuk menyimpan grup berdasarkan indeks unik
 	groupedMeshes := make(map[int][][][]Faces)
@@ -202,15 +247,18 @@ func WriteToObj(baseFilename string, index []int, Mesh [][][]Faces, vertices []P
 
 	// Proses setiap indeks unik dan ekspor sebagai file .obj terpisah
 	filePath := strings.Split(baseFilename, "/")
-	os.Mkdir("export/"+filePath[len(filePath)-1], os.ModePerm)
+	exportDir := "export/" + filePath[len(filePath)-1]
+	os.MkdirAll(exportDir, os.ModePerm)
+
 	for idx, groups := range groupedMeshes {
-		filename := fmt.Sprintf("export/"+filePath[len(filePath)-1]+"/%d.obj", idx)
+		filename := fmt.Sprintf("%s/%d.obj", exportDir, idx)
 		file, err := os.Create(filename)
 		if err != nil {
 			fmt.Println("Error creating file:", err)
 			continue
 		}
 		defer file.Close()
+
 		// Map untuk menyimpan vertex & normal lokal agar indeksnya tetap berurutan
 		vertexMap := make(map[int]int)
 		normalMap := make(map[int]int)
@@ -219,11 +267,10 @@ func WriteToObj(baseFilename string, index []int, Mesh [][][]Faces, vertices []P
 		vertexCounter := 1
 		normalCounter := 1
 
-		// // 1. Kumpulkan semua vertex & normal yang digunakan dalam grup ini
+		// 1. Kumpulkan semua vertex & normal yang digunakan dalam grup ini
 		for _, facesGroup := range groups {
 			for _, sides := range facesGroup { // Sisi-sisi dalam grup
 				for _, faces := range sides {
-					// for _, face := range faces {
 					// Konversi indeks vertex ke lokal
 					if _, exists := vertexMap[faces.v]; !exists {
 						vertexMap[faces.v] = vertexCounter
@@ -236,7 +283,6 @@ func WriteToObj(baseFilename string, index []int, Mesh [][][]Faces, vertices []P
 						localNormals = append(localNormals, normals[faces.vn-1])
 						normalCounter++
 					}
-					// }
 				}
 			}
 		}
@@ -259,19 +305,19 @@ func WriteToObj(baseFilename string, index []int, Mesh [][][]Faces, vertices []P
 			for _, sides := range facesGroup { // Sisi dalam grup
 				facesTxt := "f "
 				for _, face := range sides {
-
 					vLocal := vertexMap[face.v]
 					vnLocal := normalMap[face.vn]
 					facesTxt += strconv.Itoa(vLocal) + "//" + strconv.Itoa(vnLocal) + " "
-
 				}
 				file.WriteString(facesTxt + "\n")
 			}
 		}
 	}
+
+	fmt.Printf("Exported %d OBJ files to %s\n", len(groupedMeshes), exportDir)
 }
 
-func WritePointsToCSV(points []Point, index []int, filename string) error {
+func WritePointsToCSV(points []Point, index []int, filename string, cx, cy float64) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -282,17 +328,15 @@ func WritePointsToCSV(points []Point, index []int, filename string) error {
 	defer writer.Flush()
 
 	// Write CSV header
-	if err := writer.Write([]string{"X", "Y", "Z"}); err != nil {
+	if err := writer.Write([]string{"X", "Y", "Z", "Index"}); err != nil {
 		return err
 	}
 
 	// Write each point to CSV
-	Cx := 700621.357389
-	Cy := 9311966.06841
 	for i, p := range points {
 		row := []string{
-			strconv.FormatFloat(p.X+Cx, 'f', 6, 64),
-			strconv.FormatFloat(p.Y+Cy, 'f', 6, 64),
+			strconv.FormatFloat(p.X+cx, 'f', 6, 64),
+			strconv.FormatFloat(p.Y+cy, 'f', 6, 64),
 			strconv.FormatFloat(p.Z, 'f', 6, 64),
 			strconv.FormatInt(int64(index[i]), 10),
 		}
@@ -310,7 +354,6 @@ func IsPointInPolygon(point Point, polygon MultiPolygon) bool {
 	const eps = 1e-9
 	inside := false
 	var queryPolygon = func(inside *bool, polygon MultiPolygon) {
-		// for _, ring := range polygon.outer {
 		ring := polygon.outer
 		n := len(ring)
 		if n < 3 {
@@ -329,7 +372,6 @@ func IsPointInPolygon(point Point, polygon MultiPolygon) bool {
 			}
 			j = i
 		}
-		// }
 	}
 	queryPolygon(&inside, polygon)
 	if !inside {
@@ -338,7 +380,6 @@ func IsPointInPolygon(point Point, polygon MultiPolygon) bool {
 			if inside {
 				return inside
 			}
-
 		}
 	}
 
@@ -352,12 +393,10 @@ func ReadMesh(data []byte) ([]Point, []Point, [][][]Faces) {
 	var err error
 	groupIndex := []int{}
 	for i := 0; i < len(data)-2; i++ {
-
 		if bytes.Equal(data[0+i:2+i], []byte{10, 111}) {
 			groupIndex = append(groupIndex, 0+i)
 		}
 	}
-	// fmt.Println(data)
 	for i := 0; i < len(data)-5; i++ {
 		if bytes.Equal(data[0+i:5+i], []byte{13, 10, 13, 10, 103}) {
 			groupIndex = append(groupIndex, 0+i)
@@ -385,20 +424,17 @@ func ReadMesh(data []byte) ([]Point, []Point, [][][]Faces) {
 					if err != nil {
 						fmt.Println(err)
 					}
-
 				} else if line[0] == "vn" {
 					var vertex Point
 					vertex.X, err = strconv.ParseFloat(line[1], 64)
 					vertex.Y, err = strconv.ParseFloat(line[2], 64)
 					vertex.Z, err = strconv.ParseFloat(line[3], 64)
 					vn = append(vn, vertex)
-
 				} else if line[0] == "f" {
 					var f = make([]Faces, len(line)-1)
 					for k := 1; k < len(line); k++ {
 						if len(line[k]) > 0 {
 							indexes := strings.Split(line[k], "/")
-
 							value, err := strconv.ParseInt(indexes[0], 10, 64)
 							f[k-1].v = int(value)
 							value, err = strconv.ParseInt(indexes[2], 10, 64)
@@ -406,18 +442,17 @@ func ReadMesh(data []byte) ([]Point, []Point, [][][]Faces) {
 							if err != nil {
 								fmt.Println(err)
 							}
-
 						}
 					}
 					meshGroup = append(meshGroup, f)
 				}
-
 			}
 		}
 		Mesh = append(Mesh, meshGroup)
 	}
 	return v, vn, Mesh
 }
+
 func GetExtent(X float64, Y float64, extents *Extent) {
 	if extents.maxX == 0 || extents.minX == 0 {
 		extents.maxX = X
@@ -429,7 +464,6 @@ func GetExtent(X float64, Y float64, extents *Extent) {
 		if X < extents.minX {
 			extents.minX = X
 		}
-
 	}
 	if extents.maxY == 0 || extents.minY == 0 {
 		extents.maxY = Y
@@ -441,18 +475,16 @@ func GetExtent(X float64, Y float64, extents *Extent) {
 		if Y < extents.minY {
 			extents.minY = Y
 		}
-
 	}
-
 }
 
-func ReadGeomGeojson(geojson map[string]interface{}) ([]MultiPolygon, Extent) {
+func ReadGeomGeojson(geojson map[string]interface{}, cx, cy float64) ([]MultiPolygon, Extent) {
 	var MultiPolygons []MultiPolygon
 	var extents Extent
 	features := geojson["features"].([]interface{})
-	Cx := 700621.357389
-	Cy := 9311966.06841
-	fmt.Println(Cx, Cy)
+
+	fmt.Printf("Using coordinate offsets: CX=%.5f, CY=%.5f\n", cx, cy)
+
 	for _, feature := range features {
 		geometry, ok := feature.(map[string]interface{})["geometry"].(map[string]interface{})
 		if !ok {
@@ -482,7 +514,7 @@ func ReadGeomGeojson(geojson map[string]interface{}) ([]MultiPolygon, Extent) {
 				LinerRing := make([]Point, len(coord))
 				for j := range coord {
 					point := coord[j].([]interface{})
-					X, Y := point[0].(float64)-Cx, point[1].(float64)-Cy
+					X, Y := point[0].(float64)-cx, point[1].(float64)-cy
 					LinerRing[j] = Point{X, Y, 0}
 
 					GetExtent(X, Y, &extents)
@@ -508,9 +540,9 @@ func ReadGeomGeojson(geojson map[string]interface{}) ([]MultiPolygon, Extent) {
 
 		MultiPolygons = append(MultiPolygons, polygons)
 	}
-	// fmt.Println(geomRes)
 	return MultiPolygons, extents
 }
+
 func ReadFile(filePath string) []byte {
 	file, errFile := os.Open(filePath)
 	stat, errStat := os.Stat(filePath)
