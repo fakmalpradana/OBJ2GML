@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,16 +12,41 @@ import (
 )
 
 func main() {
-	// Configuration parameters
-	inputDir := "export/3D_UJI_MONEV_LOD1.obj" // Replace with actual path
-	translationX := 700621.357389              // Replace with desired X translation
-	translationY := 9311966.06841              // Replace with desired Y translation
-	translationZ := 0.0                        // Z translation (default: 0)
+	// Define command-line flags
+	inputDirPtr := flag.String("input", "", "Input directory or file path (required)")
+	translationXPtr := flag.Float64("tx", 0.0, "X translation value")
+	translationYPtr := flag.Float64("ty", 0.0, "Y translation value")
+	translationZPtr := flag.Float64("tz", 0.0, "Z translation value")
+	outputDirPtr := flag.String("output", "", "Output directory (default: inputDir_translated)")
+	workersPtr := flag.Int("workers", 4, "Number of concurrent workers")
 
-	// Create output directory name by appending "_translated" to input directory
-	dirName := filepath.Base(inputDir)
-	parentDir := filepath.Dir(inputDir)
-	outputDir := filepath.Join(parentDir, dirName+"_translated")
+	// Parse command-line arguments
+	flag.Parse()
+
+	// Validate required parameters
+	if *inputDirPtr == "" {
+		fmt.Println("Error: Input directory/file is required")
+		fmt.Println("Usage:")
+		flag.PrintDefaults()
+		return
+	}
+
+	// Configuration parameters
+	inputDir := *inputDirPtr
+	translationX := *translationXPtr
+	translationY := *translationYPtr
+	translationZ := *translationZPtr
+	maxWorkers := *workersPtr
+
+	// Create output directory name
+	var outputDir string
+	if *outputDirPtr == "" {
+		dirName := filepath.Base(inputDir)
+		parentDir := filepath.Dir(inputDir)
+		outputDir = filepath.Join(parentDir, dirName+"_translated")
+	} else {
+		outputDir = *outputDirPtr
+	}
 
 	// Create output directory if it doesn't exist
 	err := os.MkdirAll(outputDir, 0755)
@@ -29,15 +55,38 @@ func main() {
 		return
 	}
 
-	// Find all OBJ files in the input directory
-	files, err := filepath.Glob(filepath.Join(inputDir, "*.obj"))
+	// Find all OBJ files to process
+	var files []string
+
+	fileInfo, err := os.Stat(inputDir)
 	if err != nil {
-		fmt.Printf("Error finding OBJ files: %v\n", err)
+		fmt.Printf("Error accessing input path: %v\n", err)
+		return
+	}
+
+	if fileInfo.IsDir() {
+		// Process all OBJ files in directory
+		files, err = filepath.Glob(filepath.Join(inputDir, "*.obj"))
+		if err != nil {
+			fmt.Printf("Error finding OBJ files: %v\n", err)
+			return
+		}
+	} else if strings.ToLower(filepath.Ext(inputDir)) == ".obj" {
+		// Process single OBJ file
+		files = []string{inputDir}
+	} else {
+		fmt.Println("Input must be an OBJ file or a directory containing OBJ files")
 		return
 	}
 
 	totalFiles := len(files)
+	if totalFiles == 0 {
+		fmt.Println("No OBJ files found to process")
+		return
+	}
+
 	fmt.Printf("Found %d OBJ files to process\n", totalFiles)
+	fmt.Printf("Translating by (%.6f, %.6f, %.6f)\n", translationX, translationY, translationZ)
 
 	// Use a wait group to track completion of goroutines
 	var wg sync.WaitGroup
@@ -47,7 +96,6 @@ func main() {
 	errorFiles := make(chan string, totalFiles)
 
 	// Process files concurrently with worker pool
-	maxWorkers := 4 // Adjust based on your CPU cores
 	semaphore := make(chan struct{}, maxWorkers)
 
 	for _, file := range files {
@@ -65,6 +113,7 @@ func main() {
 
 			err := translateOBJFile(filePath, outputFile, translationX, translationY, translationZ)
 			if err != nil {
+				fmt.Printf("Error processing %s: %v\n", fileName, err)
 				errorFiles <- fileName
 			} else {
 				results <- true
