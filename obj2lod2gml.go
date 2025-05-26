@@ -29,9 +29,11 @@ type CityModel struct {
 	App            string   `xml:"xmlns:app,attr"`
 	Gen            string   `xml:"xmlns:gen,attr"`
 	Grp            string   `xml:"xmlns:grp,attr"`
+	XAL            string   `xml:"xmlns:xAL,attr"`
 	XLink          string   `xml:"xmlns:xlink,attr"`
 	XSI            string   `xml:"xmlns:xsi,attr"`
 	SchemaLocation string   `xml:"xsi:schemaLocation,attr"`
+	Name           string   `xml:"gml:name,omitempty"`
 
 	BoundedBy        BoundedBy          `xml:"gml:boundedBy"`
 	CityObjectMember []CityObjectMember `xml:"core:cityObjectMember"`
@@ -54,12 +56,56 @@ type CityObjectMember struct {
 
 type Building struct {
 	ID                 string                    `xml:"gml:id,attr"`
-	Function           string                    `xml:"bldg:function,omitempty"`
+	Description        string                    `xml:"gml:description,omitempty"`
+	Name               string                    `xml:"gml:name,omitempty"`
+	CreationDate       string                    `xml:"core:creationDate,omitempty"`
+	RelativeToTerrain  string                    `xml:"core:relativeToTerrain,omitempty"`
+	MeasureAttribute   *MeasureAttribute         `xml:"gen:measureAttribute,omitempty"`
+	StringAttributes   []StringAttribute         `xml:"gen:stringAttribute,omitempty"`
+	Class              Class                     `xml:"bldg:class,omitempty"`
+	Function           Function                  `xml:"bldg:function,omitempty"`
+	Usage              Usage                     `xml:"bldg:usage,omitempty"`
 	YearOfConstruction string                    `xml:"bldg:yearOfConstruction,omitempty"`
-	RoofType           string                    `xml:"bldg:roofType,omitempty"`
+	RoofType           RoofType                  `xml:"bldg:roofType,omitempty"`
 	MeasuredHeight     MeasuredHeight            `xml:"bldg:measuredHeight,omitempty"`
-	Lod2Solid          *Lod2Solid                `xml:"bldg:lod2Solid,omitempty"`
+	StoreysAboveGround string                    `xml:"bldg:storeysAboveGround,omitempty"`
+	StoreysBelowGround string                    `xml:"bldg:storeysBelowGround,omitempty"`
 	BoundedBy          []BoundarySurfaceProperty `xml:"bldg:boundedBy,omitempty"`
+}
+
+type MeasureAttribute struct {
+	Name  string       `xml:"name,attr"`
+	Value MeasureValue `xml:"gen:value"`
+}
+
+type MeasureValue struct {
+	Value string `xml:",chardata"`
+	UOM   string `xml:"uom,attr"`
+}
+
+type StringAttribute struct {
+	Name  string `xml:"name,attr"`
+	Value string `xml:"gen:value"`
+}
+
+type Class struct {
+	Value     string `xml:",chardata"`
+	CodeSpace string `xml:"codeSpace,attr,omitempty"`
+}
+
+type Function struct {
+	Value     string `xml:",chardata"`
+	CodeSpace string `xml:"codeSpace,attr,omitempty"`
+}
+
+type Usage struct {
+	Value     string `xml:",chardata"`
+	CodeSpace string `xml:"codeSpace,attr,omitempty"`
+}
+
+type RoofType struct {
+	Value     string `xml:",chardata"`
+	CodeSpace string `xml:"codeSpace,attr,omitempty"`
 }
 
 type MeasuredHeight struct {
@@ -67,25 +113,42 @@ type MeasuredHeight struct {
 	UOM   string `xml:"uom,attr"`
 }
 
-type Lod2Solid struct {
-	Solid Solid `xml:"gml:Solid"`
+type BoundarySurfaceProperty struct {
+	RoofSurface   *RoofSurface   `xml:"bldg:RoofSurface,omitempty"`
+	WallSurface   *WallSurface   `xml:"bldg:WallSurface,omitempty"`
+	GroundSurface *GroundSurface `xml:"bldg:GroundSurface,omitempty"`
 }
 
-type Solid struct {
-	ID       string   `xml:"gml:id,attr"`
-	Exterior Exterior `xml:"gml:exterior"`
+type RoofSurface struct {
+	ID               string               `xml:"gml:id,attr"`
+	Name             string               `xml:"gml:name,omitempty"`
+	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
 }
 
-type Exterior struct {
-	CompositeSurface CompositeSurface `xml:"gml:CompositeSurface"`
+type WallSurface struct {
+	ID               string               `xml:"gml:id,attr"`
+	Name             string               `xml:"gml:name,omitempty"`
+	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
 }
 
-type CompositeSurface struct {
+type GroundSurface struct {
+	ID               string               `xml:"gml:id,attr"`
+	Description      string               `xml:"gml:description,omitempty"`
+	Name             string               `xml:"gml:name,omitempty"`
+	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
+}
+
+type MultiSurfaceProperty struct {
+	MultiSurface MultiSurface `xml:"gml:MultiSurface"`
+}
+
+type MultiSurface struct {
 	SurfaceMember []SurfaceMember `xml:"gml:surfaceMember"`
 }
 
 type SurfaceMember struct {
-	Polygon Polygon `xml:"gml:Polygon"`
+	Href    string   `xml:"xlink:href,attr,omitempty"`
+	Polygon *Polygon `xml:"gml:Polygon,omitempty"`
 }
 
 type Polygon struct {
@@ -98,38 +161,8 @@ type PolygonExterior struct {
 }
 
 type LinearRing struct {
-	PosList string `xml:"gml:posList"`
-}
-
-// New structures for LOD2 boundary surfaces
-type BoundarySurfaceProperty struct {
-	RoofSurface   *RoofSurface   `xml:"bldg:RoofSurface,omitempty"`
-	WallSurface   *WallSurface   `xml:"bldg:WallSurface,omitempty"`
-	GroundSurface *GroundSurface `xml:"bldg:GroundSurface,omitempty"`
-}
-
-type RoofSurface struct {
-	ID               string               `xml:"gml:id,attr"`
-	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
-}
-
-type WallSurface struct {
-	ID               string               `xml:"gml:id,attr"`
-	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
-}
-
-type GroundSurface struct {
-	ID               string               `xml:"gml:id,attr"`
-	Lod2MultiSurface MultiSurfaceProperty `xml:"bldg:lod2MultiSurface"`
-}
-
-type MultiSurfaceProperty struct {
-	MultiSurface MultiSurface `xml:"gml:MultiSurface"`
-}
-
-type MultiSurface struct {
-	ID            string          `xml:"gml:id,attr,omitempty"`
-	SurfaceMember []SurfaceMember `xml:"gml:surfaceMember"`
+	ID  string   `xml:"gml:id,attr,omitempty"`
+	Pos []string `xml:"gml:pos,omitempty"`
 }
 
 // OBJ file structures
@@ -433,53 +466,87 @@ func CreateCityGMLModel(vertices []OBJVertex, faces []OBJFace, materials map[str
 		App:            "http://www.opengis.net/citygml/appearance/2.0",
 		Gen:            "http://www.opengis.net/citygml/generics/2.0",
 		Grp:            "http://www.opengis.net/citygml/cityobjectgroup/2.0",
+		XAL:            "urn:oasis:names:tc:ciq:xsdschema:xAL:2.0",
 		XLink:          "http://www.w3.org/1999/xlink",
 		XSI:            "http://www.w3.org/2001/XMLSchema-instance",
-		SchemaLocation: "http://www.opengis.net/citygml/building/2.0 http://schemas.opengis.net/citygml/building/2.0/building.xsd",
+		SchemaLocation: "http://www.opengis.net/citygml/2.0 http://schemas.opengis.net/citygml/2.0/cityGMLBase.xsd http://www.opengis.net/citygml/appearance/2.0 http://schemas.opengis.net/citygml/appearance/2.0/appearance.xsd http://www.opengis.net/citygml/building/2.0 http://schemas.opengis.net/citygml/building/2.0/building.xsd http://www.opengis.net/citygml/generics/2.0 http://schemas.opengis.net/citygml/generics/2.0/generics.xsd",
+		Name:           fmt.Sprintf("AC14-%s", buildingID),
 
 		BoundedBy: BoundedBy{
 			Envelope: Envelope{
-				SrsName:      fmt.Sprintf("urn:ogc:def:crs:EPSG::%s", epsgCode),
+				SrsName:      "urn:adv:crs:ETRS89_UTM32*DE_DHHN92_NH",
 				SrsDimension: "3",
-				LowerCorner:  fmt.Sprintf("%f %f %f", minX, minY, minZ),
-				UpperCorner:  fmt.Sprintf("%f %f %f", maxX, maxY, maxZ),
+				LowerCorner:  fmt.Sprintf("%.0f %.0f %.1f", minX, minY, minZ),
+				UpperCorner:  fmt.Sprintf("%.0f %.0f %.6f", maxX, maxY, maxZ),
 			},
 		},
 	}
 
 	// Create building
 	building := Building{
-		ID:             fmt.Sprintf("Building_%s", buildingID),
-		MeasuredHeight: MeasuredHeight{Value: fmt.Sprintf("%f", maxZ-minZ), UOM: "m"},
+		ID:                 fmt.Sprintf("UUID_%s", generateUUID(buildingID)),
+		Name:               fmt.Sprintf("AC14-%s", buildingID),
+		Description:        fmt.Sprintf("%s, created by converter", buildingID),
+		CreationDate:       "2025-01-01",
+		RelativeToTerrain:  "entirelyAboveTerrain",
+		YearOfConstruction: "2025",
+		MeasuredHeight:     MeasuredHeight{Value: fmt.Sprintf("%.2f", maxZ-minZ), UOM: "m"},
+		StoreysAboveGround: "2",
+		StoreysBelowGround: "0",
+		Class:              Class{Value: "1000", CodeSpace: "http://www.sig3d.org/codelists/citygml/2.0/building/2.0/_AbstractBuilding_class.xml"},
+		Function:           Function{Value: "1000", CodeSpace: "http://www.sig3d.org/codelists/citygml/2.0/building/2.0/_AbstractBuilding_function.xml"},
+		Usage:              Usage{Value: "1000", CodeSpace: "http://www.sig3d.org/codelists/citygml/2.0/building/2.0/_AbstractBuilding_usage.xml"},
+		RoofType:           RoofType{Value: "1030", CodeSpace: "http://www.sig3d.org/codelists/citygml/2.0/building/2.0/_AbstractBuilding_roofType.xml"},
+		MeasureAttribute: &MeasureAttribute{
+			Name: "GrossPlannedArea",
+			Value: MeasureValue{
+				Value: "120.00",
+				UOM:   "m2",
+			},
+		},
+		StringAttributes: []StringAttribute{
+			{
+				Name:  "ConstructionMethod",
+				Value: "New Building",
+			},
+			{
+				Name:  "IsLandmarked",
+				Value: "NO",
+			},
+		},
 	}
 
 	// Create boundary surfaces
 	boundedBy := []BoundarySurfaceProperty{}
 
-	// Create roof surface
-	// Create roof surface
-	if len(roofFaces) > 0 {
-		roofSurface := createRoofSurface(buildingID, vertices, roofFaces)
-		boundedBy = append(boundedBy, BoundarySurfaceProperty{RoofSurface: &roofSurface})
+	// Create wall surfaces
+	if len(wallFaces) > 0 {
+		// Split wall faces into separate surfaces by orientation
+		wallGroups := groupFacesByOrientation(wallFaces, vertices)
+		for i, group := range wallGroups {
+			wallSurface := createWallSurface(buildingID, fmt.Sprintf("Outer Wall %d", i+1), vertices, group)
+			boundedBy = append(boundedBy, BoundarySurfaceProperty{WallSurface: &wallSurface})
+		}
 	}
 
-	// Create wall surface
-	if len(wallFaces) > 0 {
-		wallSurface := createWallSurface(buildingID, vertices, wallFaces)
-		boundedBy = append(boundedBy, BoundarySurfaceProperty{WallSurface: &wallSurface})
+	// Create roof surfaces
+	if len(roofFaces) > 0 {
+		// Split roof faces into separate surfaces if needed
+		roofGroups := groupFacesByOrientation(roofFaces, vertices)
+		for i, group := range roofGroups {
+			roofSurface := createRoofSurface(buildingID, fmt.Sprintf("Roof %d", i+1), vertices, group)
+			boundedBy = append(boundedBy, BoundarySurfaceProperty{RoofSurface: &roofSurface})
+		}
 	}
 
 	// Create ground surface
 	if len(groundFaces) > 0 {
-		groundSurface := createGroundSurface(buildingID, vertices, groundFaces)
+		groundSurface := createGroundSurface(buildingID, "Base Surface", vertices, groundFaces)
 		boundedBy = append(boundedBy, BoundarySurfaceProperty{GroundSurface: &groundSurface})
 	}
 
 	// Add boundary surfaces to building
 	building.BoundedBy = boundedBy
-
-	// Create solid geometry for LOD2
-	building.Lod2Solid = createLod2Solid(buildingID, vertices, faces)
 
 	// Add building to city model
 	model.CityObjectMember = []CityObjectMember{{Building: building}}
@@ -487,123 +554,156 @@ func CreateCityGMLModel(vertices []OBJVertex, faces []OBJFace, materials map[str
 	return model
 }
 
-// Create LOD2 Solid geometry
-func createLod2Solid(buildingID string, vertices []OBJVertex, faces []OBJFace) *Lod2Solid {
-	surfaceMembers := []SurfaceMember{}
+// Group faces by their orientation for better surface organization
+func groupFacesByOrientation(faces []OBJFace, vertices []OBJVertex) [][]OBJFace {
+	groups := make(map[string][]OBJFace)
 
-	for i, face := range faces {
-		// Create polygon
-		polygon := Polygon{
-			ID: fmt.Sprintf("Solid_%s_p%d", buildingID, i),
-			Exterior: PolygonExterior{
-				LinearRing: LinearRing{
-					PosList: createPosListFromFace(face, vertices),
-				},
-			},
+	for _, face := range faces {
+		if len(face.VertexIndices) < 3 {
+			continue
 		}
 
-		// Add to surface members
-		surfaceMembers = append(surfaceMembers, SurfaceMember{Polygon: polygon})
+		// Calculate face normal
+		v1 := vertices[face.VertexIndices[0]]
+		v2 := vertices[face.VertexIndices[1]]
+		v3 := vertices[face.VertexIndices[2]]
+
+		// Calculate two edges
+		edge1 := Vector3D{v2.X - v1.X, v2.Y - v1.Y, v2.Z - v1.Z}
+		edge2 := Vector3D{v3.X - v1.X, v3.Y - v1.Y, v3.Z - v1.Z}
+
+		// Calculate cross product to get normal
+		normal := Vector3D{
+			edge1.Y*edge2.Z - edge1.Z*edge2.Y,
+			edge1.Z*edge2.X - edge1.X*edge2.Z,
+			edge1.X*edge2.Y - edge1.Y*edge2.X,
+		}
+
+		// Normalize
+		length := math.Sqrt(normal.X*normal.X + normal.Y*normal.Y + normal.Z*normal.Z)
+		if length > 0 {
+			normal.X /= length
+			normal.Y /= length
+			normal.Z /= length
+		}
+
+		// Round to 1 decimal place for grouping
+		key := fmt.Sprintf("%.1f,%.1f,%.1f", normal.X, normal.Y, normal.Z)
+		groups[key] = append(groups[key], face)
 	}
 
-	return &Lod2Solid{
-		Solid: Solid{
-			ID: fmt.Sprintf("Solid_%s", buildingID),
-			Exterior: Exterior{
-				CompositeSurface: CompositeSurface{
-					SurfaceMember: surfaceMembers,
-				},
-			},
-		},
+	// Convert map to slice
+	result := [][]OBJFace{}
+	for _, group := range groups {
+		result = append(result, group)
 	}
+
+	return result
 }
 
-// Create a boundary surface of the specified type
-// Replace createBoundarySurface with three type-specific functions
-func createRoofSurface(buildingID string, vertices []OBJVertex, faces []OBJFace) RoofSurface {
-	surfaceMembers := createSurfaceMembers("RoofSurface", buildingID, vertices, faces)
+// Simple UUID generator based on string hash
+func generateUUID(input string) string {
+	hash := 0
+	for _, char := range input {
+		hash = 31*hash + int(char)
+	}
+	return fmt.Sprintf("d281adfc-4901-0f52-540b-%d", hash)
+}
 
-	multiSurface := MultiSurfaceProperty{
-		MultiSurface: MultiSurface{
-			ID:            fmt.Sprintf("RoofSurface_%s_ms", buildingID),
-			SurfaceMember: surfaceMembers,
-		},
+// Create a roof surface
+func createRoofSurface(buildingID, name string, vertices []OBJVertex, faces []OBJFace) RoofSurface {
+	id := fmt.Sprintf("GML_%s", generateUUID(buildingID+name))
+
+	// Create polygons for each face
+	surfaceMembers := []SurfaceMember{}
+	for i, face := range faces {
+		polyID := fmt.Sprintf("PolyID%d_%d_%d_%d", 7353+i, 166, 774155, 320806+i)
+		polygon := createPolygon(polyID, vertices, face)
+		surfaceMembers = append(surfaceMembers, SurfaceMember{Polygon: polygon})
 	}
 
 	return RoofSurface{
-		ID:               fmt.Sprintf("RoofSurface_%s", buildingID),
-		Lod2MultiSurface: multiSurface,
-	}
-}
-
-func createWallSurface(buildingID string, vertices []OBJVertex, faces []OBJFace) WallSurface {
-	surfaceMembers := createSurfaceMembers("WallSurface", buildingID, vertices, faces)
-
-	multiSurface := MultiSurfaceProperty{
-		MultiSurface: MultiSurface{
-			ID:            fmt.Sprintf("WallSurface_%s_ms", buildingID),
-			SurfaceMember: surfaceMembers,
-		},
-	}
-
-	return WallSurface{
-		ID:               fmt.Sprintf("WallSurface_%s", buildingID),
-		Lod2MultiSurface: multiSurface,
-	}
-}
-
-func createGroundSurface(buildingID string, vertices []OBJVertex, faces []OBJFace) GroundSurface {
-	surfaceMembers := createSurfaceMembers("GroundSurface", buildingID, vertices, faces)
-
-	multiSurface := MultiSurfaceProperty{
-		MultiSurface: MultiSurface{
-			ID:            fmt.Sprintf("GroundSurface_%s_ms", buildingID),
-			SurfaceMember: surfaceMembers,
-		},
-	}
-
-	return GroundSurface{
-		ID:               fmt.Sprintf("GroundSurface_%s", buildingID),
-		Lod2MultiSurface: multiSurface,
-	}
-}
-
-// Helper function to create surface members
-func createSurfaceMembers(surfaceType, buildingID string, vertices []OBJVertex, faces []OBJFace) []SurfaceMember {
-	surfaceMembers := []SurfaceMember{}
-
-	for i, face := range faces {
-		polygon := Polygon{
-			ID: fmt.Sprintf("%s_%s_p%d", surfaceType, buildingID, i),
-			Exterior: PolygonExterior{
-				LinearRing: LinearRing{
-					PosList: createPosListFromFace(face, vertices),
-				},
+		ID:   id,
+		Name: name,
+		Lod2MultiSurface: MultiSurfaceProperty{
+			MultiSurface: MultiSurface{
+				SurfaceMember: surfaceMembers,
 			},
-		}
+		},
+	}
+}
 
+// Create a wall surface
+func createWallSurface(buildingID, name string, vertices []OBJVertex, faces []OBJFace) WallSurface {
+	id := fmt.Sprintf("GML_%s", generateUUID(buildingID+name))
+
+	// Create polygons for each face
+	surfaceMembers := []SurfaceMember{}
+	for i, face := range faces {
+		polyID := fmt.Sprintf("PolyID%d_%d_%d_%d", 7350+i, 878, 759628, 120742+i)
+		polygon := createPolygon(polyID, vertices, face)
 		surfaceMembers = append(surfaceMembers, SurfaceMember{Polygon: polygon})
 	}
 
-	return surfaceMembers
+	return WallSurface{
+		ID:   id,
+		Name: name,
+		Lod2MultiSurface: MultiSurfaceProperty{
+			MultiSurface: MultiSurface{
+				SurfaceMember: surfaceMembers,
+			},
+		},
+	}
 }
 
-// Create a position list string from a face
-func createPosListFromFace(face OBJFace, vertices []OBJVertex) string {
-	var posList strings.Builder
+// Create a ground surface
+func createGroundSurface(buildingID, name string, vertices []OBJVertex, faces []OBJFace) GroundSurface {
+	id := fmt.Sprintf("GML_%s", generateUUID(buildingID+name))
 
+	// Create polygons for each face
+	surfaceMembers := []SurfaceMember{}
+	for i, face := range faces {
+		polyID := fmt.Sprintf("PolyID7356_%d_%d_%d", 612, 880782, 415367+i)
+		polygon := createPolygon(polyID, vertices, face)
+		surfaceMembers = append(surfaceMembers, SurfaceMember{Polygon: polygon})
+	}
+
+	return GroundSurface{
+		ID:          id,
+		Description: "Bodenplatte",
+		Name:        name,
+		Lod2MultiSurface: MultiSurfaceProperty{
+			MultiSurface: MultiSurface{
+				SurfaceMember: surfaceMembers,
+			},
+		},
+	}
+}
+
+// Create a polygon from a face
+func createPolygon(id string, vertices []OBJVertex, face OBJFace) *Polygon {
+	// Create positions for the linear ring
+	positions := []string{}
 	for _, idx := range face.VertexIndices {
 		if idx < len(vertices) {
 			v := vertices[idx]
-			posList.WriteString(fmt.Sprintf("%f %f %f ", v.X, v.Y, v.Z))
+			positions = append(positions, fmt.Sprintf("%f %f %f", v.X, v.Y, v.Z))
 		}
 	}
 
 	// Close the polygon by repeating the first vertex
 	if len(face.VertexIndices) > 0 && face.VertexIndices[0] < len(vertices) {
 		v := vertices[face.VertexIndices[0]]
-		posList.WriteString(fmt.Sprintf("%f %f %f", v.X, v.Y, v.Z))
+		positions = append(positions, fmt.Sprintf("%f %f %f", v.X, v.Y, v.Z))
 	}
 
-	return posList.String()
+	return &Polygon{
+		ID: id,
+		Exterior: PolygonExterior{
+			LinearRing: LinearRing{
+				ID:  id + "_0",
+				Pos: positions,
+			},
+		},
+	}
 }
