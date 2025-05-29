@@ -3,12 +3,12 @@ import time
 
 start = time.time()
 
-nlp = "AN_13"
-sub_grid = "A"
-bo = "percepatan/OBJ/AN_13/AN_13_A/AN-13-A-BO.geojson"
+nlp = "AG_09"
+sub_grid = "C"
+bo = "percepatan/OBJ/AG_09/AG_09_C/AG-09-C_BO_Caesar Yoga_BUFFER_Lengkap.geojson"
 
-tx = 696436.71322
-ty = 9320053.52220
+tx = 692542.174723411328159
+ty = 9326588.18167
 
 # Pemisahan Bangunan
 sp.call([
@@ -27,19 +27,41 @@ sp.call([
     "-tz=0"
 ])
 
-# Convert OBJ ke CityGML
+# Generate MTL
 sp.call([
-    "go", "run", "obj2gml.go",
+    "python", "semantic_mapping.py",
+    "--obj-dir", f"export/{nlp}_{sub_grid}.obj_translated",
+    "--geojson", f"{bo}"
+])
+
+# Convert OBJ ke CityGML lod2
+sp.call([
+    "go", "run", "obj2lod2gml.go",
     "-input", f"export/{nlp}_{sub_grid}.obj_translated",
     "-output", f"export/{nlp}_{sub_grid}.obj_translated_gml"
 ])
 
-# Merge Keseluruhan CityGML file menjadi 1 file
+# # Convert OBJ ke CityGML lod1
+# sp.call([
+#     "go", "run", "obj2gml.go",
+#     "-input", f"export/{nlp}_{sub_grid}.obj_translated",
+#     "-output", f"export/{nlp}_{sub_grid}.obj_translated_gml"
+# ])
+
+# Merge keseluruhan CityGMl lod2 file menjadi 1 file
 sp.call([
-    "go", "run", "mergegml.go",
-    "-input", f"export/{nlp}_{sub_grid}.obj_translated_gml",
-    "-output", f"percepatan/citygml/{nlp}_{sub_grid}.gml"
+    "python", "lod2merge.py",
+    f"export/{nlp}_{sub_grid}.obj_translated_gml",
+    f"percepatan/citygml/{nlp}_{sub_grid}.gml",
+    "--name", f"{nlp}_{sub_grid}"
 ])
+
+# # Merge Keseluruhan CityGML lod1 file menjadi 1 file
+# sp.call([
+#     "go", "run", "mergegml.go",
+#     "-input", f"export/{nlp}_{sub_grid}.obj_translated_gml",
+#     "-output", f"percepatan/citygml/{nlp}_{sub_grid}.gml"
+# ])
 
 end = time.time() - start
 print(f"durasi : {end} s")
