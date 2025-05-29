@@ -474,7 +474,7 @@ func CreateCityGMLModel(vertices []OBJVertex, faces []OBJFace, materials map[str
 
 		BoundedBy: BoundedBy{
 			Envelope: Envelope{
-				SrsName:      "urn:adv:crs:ETRS89_UTM32*DE_DHHN92_NH",
+				SrsName:      "http://www.opengis.net/def/crs/EPSG/0/32748",
 				SrsDimension: "3",
 				LowerCorner:  fmt.Sprintf("%.0f %.0f %.1f", minX, minY, minZ),
 				UpperCorner:  fmt.Sprintf("%.0f %.0f %.6f", maxX, maxY, maxZ),
