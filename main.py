@@ -192,6 +192,7 @@ def main():
     print(f"\n🎉 All processing completed!")
     print(f"📊 Processed {len(file_set)} file sets in {end:.2f} seconds")
     print(f"📝 Detailed logs with timestamps saved to '{log_path}'")
+    print("\n© 2025. Fairuz Akmal Pradana 👱")
 
 if __name__ == "__main__":
     main()
