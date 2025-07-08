@@ -1,5 +1,12 @@
 data/*
-export/*.gml
-export/*.obj
-export/*.json
+# export/*.gml
+# export/*.obj
+# export/*.json
+export
 *.DS_Store
+percepatan/*
+backup/*
+__pycache__
+citygml-tools-2.4.0
+leger
+sample_citygml
