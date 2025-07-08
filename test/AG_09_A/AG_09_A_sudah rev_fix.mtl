@@ -1,0 +1,14 @@
+#
+## Alias OBJ Material File
+# Exported from SketchUp, (c) 2000-2012 Trimble Navigation Limited
+
+newmtl Modelur_terrace
+Ka 0.000000 0.000000 0.000000
+Kd 0.537255 1.000000 0.776471
+Ks 0.330000 0.330000 0.330000
+
+newmtl Residential
+Ka 0.000000 0.000000 0.000000
+Kd 1.000000 0.917647 0.733333
+Ks 0.330000 0.330000 0.330000
+
