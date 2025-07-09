@@ -117,8 +117,34 @@ func main() {
 		index = append(index, SearchIdInGeom(Mesh, geoPolygon, tiles, v, i, &cent))
 	}
 
-	WritePointsToCSV(cent, index, objFilePath+".csv", cx, cy)
-	WriteToObj(objFilePath, outputDir, index, Mesh, v, vn, cent, cx, cy)
+	// Filter out outliers (index 12030) before writing
+	filteredCent, filteredIndex, filteredMesh := FilterOutliers(cent, index, Mesh)
+
+	fmt.Printf("Objects before filtering: %d\n", len(index))
+	fmt.Printf("Objects after filtering: %d\n", len(filteredIndex))
+	fmt.Printf("Outliers removed: %d\n", len(index)-len(filteredIndex))
+
+	WritePointsToCSV(filteredCent, filteredIndex, objFilePath+".csv", cx, cy)
+	WriteToObj(objFilePath, outputDir, filteredIndex, filteredMesh, v, vn, filteredCent, cx, cy)
+}
+
+// FilterOutliers removes objects with index 12030 (outliers)
+func FilterOutliers(centroids []Point, indices []int, meshes [][][]Faces) ([]Point, []int, [][][]Faces) {
+	const outlierIndex = 12030
+
+	var filteredCentroids []Point
+	var filteredIndices []int
+	var filteredMeshes [][][]Faces
+
+	for i, idx := range indices {
+		if idx != outlierIndex {
+			filteredCentroids = append(filteredCentroids, centroids[i])
+			filteredIndices = append(filteredIndices, idx)
+			filteredMeshes = append(filteredMeshes, meshes[i])
+		}
+	}
+
+	return filteredCentroids, filteredIndices, filteredMeshes
 }
 
 func SearchIdInGeom(Mesh [][][]Faces, geom []MultiPolygon, tile Tiles, v []Point, i int, cent *[]Point) int {
@@ -242,6 +268,11 @@ func WriteToObj(baseFilename string, outputDir string, index []int, Mesh [][][]F
 
 	// Kumpulkan semua grup berdasarkan indeks unik dan centroid-nya
 	for i, idx := range index {
+		// Skip outliers (index 12030) - this is a safety check
+		if idx == 12030 {
+			continue
+		}
+
 		if _, exists := groupedMeshes[idx]; !exists {
 			groupedMeshes[idx] = [][][]Faces{} // Inisialisasi jika belum ada
 			groupedCentroids[idx] = []Point{}
@@ -351,7 +382,7 @@ func WriteToObj(baseFilename string, outputDir string, index []int, Mesh [][][]F
 		}
 	}
 
-	fmt.Printf("Exported %d OBJ files to %s\n", len(groupedMeshes), outputDir)
+	fmt.Printf("Exported %d OBJ files to %s (outliers excluded)\n", len(groupedMeshes), outputDir)
 }
 
 func WritePointsToCSV(points []Point, index []int, filename string, cx, cy float64) error {
@@ -369,7 +400,7 @@ func WritePointsToCSV(points []Point, index []int, filename string, cx, cy float
 		return err
 	}
 
-	// Write each point to CSV
+	// Write each point to CSV (outliers already filtered out)
 	for i, p := range points {
 		row := []string{
 			strconv.FormatFloat(p.X+cx, 'f', 6, 64),
@@ -382,11 +413,12 @@ func WritePointsToCSV(points []Point, index []int, filename string, cx, cy float
 		}
 	}
 
-	fmt.Println("CSV file saved:", filename)
+	fmt.Println("CSV file saved:", filename, "(outliers excluded)")
 
 	return nil
 }
 
+// Rest of the functions remain the same...
 func IsPointInPolygon(point Point, polygon MultiPolygon) bool {
 	const eps = 1e-9
 	inside := false
