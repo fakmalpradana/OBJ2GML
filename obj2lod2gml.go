@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // XML namespaces and schema declarations
@@ -458,6 +459,9 @@ func CreateCityGMLModel(vertices []OBJVertex, faces []OBJFace, materials map[str
 		}
 	}
 
+	// Generate current date for CreationDate
+	currentDate := time.Now().Format("2006-01-02")
+
 	// Create CityGML model
 	model := CityModel{
 		GML:            "http://www.opengis.net/gml",
@@ -474,7 +478,7 @@ func CreateCityGMLModel(vertices []OBJVertex, faces []OBJFace, materials map[str
 
 		BoundedBy: BoundedBy{
 			Envelope: Envelope{
-				SrsName:      "http://www.opengis.net/def/crs/EPSG/0/32748",
+				SrsName:      fmt.Sprintf("http://www.opengis.net/def/crs/EPSG/0/%s", epsgCode),
 				SrsDimension: "3",
 				LowerCorner:  fmt.Sprintf("%.0f %.0f %.1f", minX, minY, minZ),
 				UpperCorner:  fmt.Sprintf("%.0f %.0f %.6f", maxX, maxY, maxZ),
@@ -482,14 +486,14 @@ func CreateCityGMLModel(vertices []OBJVertex, faces []OBJFace, materials map[str
 		},
 	}
 
-	// Create building
+	// Create building with filename as ID and current date as CreationDate
 	building := Building{
-		ID:                 fmt.Sprintf("UUID_%s", generateUUID(buildingID)),
+		ID:                 buildingID, // Use the filename without extension directly
 		Name:               fmt.Sprintf("AC14-%s", buildingID),
 		Description:        fmt.Sprintf("%s, created by converter", buildingID),
-		CreationDate:       "2025-01-01",
+		CreationDate:       currentDate, // Use current date
 		RelativeToTerrain:  "entirelyAboveTerrain",
-		YearOfConstruction: "2025",
+		YearOfConstruction: fmt.Sprintf("%d", time.Now().Year()), // Use current year
 		MeasuredHeight:     MeasuredHeight{Value: fmt.Sprintf("%.2f", maxZ-minZ), UOM: "m"},
 		StoreysAboveGround: "2",
 		StoreysBelowGround: "0",
