@@ -69,7 +69,7 @@ def main():
 
     print(f"\n⚙️  Program is running... Please wait 😬🙏")
     
-    root_dir = "percepatan_new/OBJ/2025_06_13"
+    root_dir = "test"
     
     # Set up log file path
     log_path = f'{root_dir}/detailed_processing.log'.replace('OBJ', 'CityGML')
@@ -119,14 +119,16 @@ def main():
                 "go", "run", "objseparator.go", 
                 f"-cx={coord[0]}", f"-cy={coord[1]}",
                 f"{obj}", 
-                f"{bo}"
+                f"{bo}",
+                f"{root_dir}/{folder_name}/obj"
             ], "Building separation")
 
             # Step 2: Translasi Objek Menuju Koordinat UTM
             log_with_timestamp("STEP 2/5: Object translation")
             run_subprocess_with_capture([
                 "go", "run", "translate.go", 
-                f"-input=export/{rel_path.parts[1]}", 
+                f"-input={root_dir}/{folder_name}/obj", 
+                f"-output={root_dir}/{folder_name}/translated", 
                 f"-tx={coord[0]}", 
                 f"-ty={coord[1]}",
                 "-tz=0"
@@ -136,29 +138,23 @@ def main():
             log_with_timestamp("STEP 3/5: MTL generation")
             run_subprocess_with_capture([
                 "python", "semantic_mapping.py",
-                "--obj-dir", f"export/{rel_path.parts[1]}_translated",
+                "--obj-dir", f"{root_dir}/{folder_name}/translated",
                 "--geojson", f"{bo}"
             ], "MTL generation")
-            
-            log_with_timestamp("Cleaning up translated files")
-            delete_files(f"export/{rel_path.parts[1]}_translated")
 
             # Step 4: Convert OBJ ke CityGML lod2
             log_with_timestamp("STEP 4/5: OBJ to CityGML conversion")
             run_subprocess_with_capture([
                 "go", "run", "obj2lod2gml.go",
-                "-input", f"export/{rel_path.parts[1]}_translated",
-                "-output", f"export/{rel_path.parts[1]}_translated_gml"
+                "-input", f"{root_dir}/{folder_name}/translated",
+                "-output", f"{root_dir}/{folder_name}/citygml"
             ], "OBJ to CityGML LOD2 conversion")
-            
-            log_with_timestamp("Cleaning up GML files")
-            delete_files(f"export/{rel_path.parts[1]}_translated_gml")
 
             # Step 5: Merge keseluruhan CityGMl lod2 file menjadi 1 file
             log_with_timestamp("STEP 5/5: CityGML file merging")
             run_subprocess_with_capture([
                 "python", "lod2merge.py",
-                f"export/{rel_path.parts[1]}_translated_gml",
+                f"{root_dir}/{folder_name}/citygml",
                 f"{output_path}",
                 "--name", f"{folder_name}"
             ], "CityGML file merging")
@@ -166,9 +162,9 @@ def main():
             # Final cleanup
             log_with_timestamp("Final cleanup")
             directories_to_delete = [
-                f"export/{rel_path.parts[1]}",
-                f"export/{rel_path.parts[1]}_translated",
-                f"export/{rel_path.parts[1]}_translated_gml"
+                f"{root_dir}/{folder_name}/obj",
+                f"{root_dir}/{folder_name}/translated",
+                f"{root_dir}/{folder_name}/citygml"
             ]
             log_with_timestamp(f"Deleting directories: {directories_to_delete}")
             delete_directories(directories_to_delete)
