@@ -114,7 +114,7 @@ def main():
             pbar.set_description(f"Processing {folder_name}")
 
             # Step 1: Pemisahan Bangunan
-            log_with_timestamp("STEP 1/5: Building separation")
+            log_with_timestamp("STEP 1/6: Building separation")
             run_subprocess_with_capture([
                 "go", "run", "objseparator.go", 
                 f"-cx={coord[0]}", f"-cy={coord[1]}",
@@ -124,7 +124,7 @@ def main():
             ], "Building separation")
 
             # Step 2: Translasi Objek Menuju Koordinat UTM
-            log_with_timestamp("STEP 2/5: Object translation")
+            log_with_timestamp("STEP 2/6: Object translation")
             run_subprocess_with_capture([
                 "go", "run", "translate.go", 
                 f"-input={root_dir}/{folder_name}/obj", 
@@ -135,23 +135,36 @@ def main():
             ], "Object translation to UTM coordinates")
 
             # Step 3: Generate MTL
-            log_with_timestamp("STEP 3/5: MTL generation")
+            log_with_timestamp("STEP 3/6: MTL generation")
             run_subprocess_with_capture([
                 "python", "semantic_mapping.py",
                 "--obj-dir", f"{root_dir}/{folder_name}/translated",
                 "--geojson", f"{bo}"
             ], "MTL generation")
 
-            # Step 4: Convert OBJ ke CityGML lod2
-            log_with_timestamp("STEP 4/5: OBJ to CityGML conversion")
+            # Step 4: Generate attribute
+            log_with_timestamp("STEP 4/5: Generate Attribute")
+            run_subprocess_with_capture([
+                "python", "attribute_gen.py",
+                "--geojson", "Kelurahan DKI.geojson",
+                "--obj_dir", f"{root_dir}/{folder_name}/translated",
+                "--output", f"{root_dir}/{folder_name}/translated"
+            ])
+
+            run_subprocess_with_capture([
+                "python", "copyNrename.py", "--root_dir", root_dir
+            ])
+
+            # Step 5: Convert OBJ ke CityGML lod2
+            log_with_timestamp("STEP 5/6: OBJ to CityGML conversion")
             run_subprocess_with_capture([
                 "go", "run", "obj2lod2gml.go",
                 "-input", f"{root_dir}/{folder_name}/translated",
                 "-output", f"{root_dir}/{folder_name}/citygml"
             ], "OBJ to CityGML LOD2 conversion")
 
-            # Step 5: Merge keseluruhan CityGMl lod2 file menjadi 1 file
-            log_with_timestamp("STEP 5/5: CityGML file merging")
+            # Step 6: Merge keseluruhan CityGMl lod2 file menjadi 1 file
+            log_with_timestamp("STEP 6/6: CityGML file merging")
             run_subprocess_with_capture([
                 "python", "lod2merge.py",
                 f"{root_dir}/{folder_name}/citygml",
