@@ -3,6 +3,7 @@ import json
 import csv
 import math
 import argparse
+import random
 from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
@@ -16,6 +17,28 @@ class OBJToCSVGenerator:
         self.obj_folder_path = obj_folder_path
         self.output_folder_path = output_folder_path
         
+        # Indonesian names for random generation
+        self.first_names = [
+            "Ahmad", "Budi", "Sari", "Dewi", "Andi", "Rina", "Joko", "Maya", "Rudi", "Sinta",
+            "Agus", "Lina", "Hadi", "Ratna", "Dedi", "Indira", "Bambang", "Fitri", "Wahyu", "Novi",
+            "Teguh", "Yuni", "Fajar", "Dian", "Hendro", "Wati", "Gunawan", "Siti", "Rizki", "Ayu",
+            "Bayu", "Eka", "Doni", "Mega", "Irwan", "Tuti", "Yoga", "Lia", "Eko", "Nita",
+            "Arif", "Rini", "Dimas", "Sri", "Hendra", "Ani", "Yanto", "Dwi", "Adi", "Tri"
+        ]
+        
+        self.last_names = [
+            "Wijaya", "Santoso", "Pratama", "Sari", "Kusuma", "Utama", "Permana", "Lestari",
+            "Rahayu", "Handoko", "Susanto", "Maharani", "Purnama", "Wardani", "Setiawan", "Anggraini",
+            "Nugroho", "Safitri", "Kurniawan", "Wulandari", "Hidayat", "Pertiwi", "Suryanto", "Cahyani",
+            "Gunawan", "Sulistyowati", "Irawan", "Novitasari", "Suryana", "Oktaviani", "Pranoto", "Fitriani",
+            "Saputra", "Puspitasari", "Hermawan", "Damayanti", "Setiadi", "Kusumawardani", "Haryanto", "Widyastuti"
+        ]
+        
+        self.middle_names = [
+            "Budi", "Sari", "Dwi", "Tri", "Eka", "Dua", "Agung", "Indah", "Jaya", "Mulia",
+            "Putra", "Putri", "Adi", "Ayu", "Bayu", "Devi", "Fajar", "Gita", "Hadi", "Ika"
+        ]
+        
         # Load administrative boundaries
         print(f"Loading GeoJSON from: {geojson_path}")
         self.gdf = gpd.read_file(geojson_path)
@@ -27,6 +50,30 @@ class OBJToCSVGenerator:
         # Ensure output folder exists
         os.makedirs(output_folder_path, exist_ok=True)
         print(f"Output directory created/verified: {output_folder_path}")
+    
+    def generate_indonesian_name(self):
+        """Generate random Indonesian name with 2 or 3 words"""
+        first_name = random.choice(self.first_names)
+        last_name = random.choice(self.last_names)
+        
+        # 60% chance for 2 words, 40% chance for 3 words
+        if random.random() < 0.6:
+            # 2 words
+            return f"{first_name} {last_name}"
+        else:
+            # 3 words
+            middle_name = random.choice(self.middle_names)
+            return f"{first_name} {middle_name} {last_name}"
+    
+    def format_nop(self, nop_digits):
+        """Format 18-digit NOP into XX.XX.XXX.XXX.XXX-XXXX.X pattern"""
+        if len(nop_digits) != 18:
+            # Ensure exactly 18 digits
+            nop_digits = nop_digits.ljust(18, '0')[:18]
+        
+        # Format: XX.XX.XXX.XXX.XXX-XXXX.X
+        formatted = f"{nop_digits[0:2]}.{nop_digits[2:4]}.{nop_digits[4:7]}.{nop_digits[7:10]}.{nop_digits[10:13]}-{nop_digits[13:17]}.{nop_digits[17]}"
+        return formatted
     
     def create_admin_codes(self):
         """Create unique 2-digit codes for WADMKK, WADMKC, and 3-digit for WADMKD"""
@@ -188,7 +235,7 @@ class OBJToCSVGenerator:
         return nib
     
     def generate_nop(self, kota, kecamatan, kelurahan, centroid_x, centroid_y):
-        """Generate 18-digit NOP"""
+        """Generate 18-digit NOP and format it"""
         kota_code = self.kota_codes.get(kota, "00")
         kecamatan_code = self.kecamatan_codes.get(kecamatan, "00")
         kelurahan_code = self.kelurahan_codes.get(kelurahan, "000")
@@ -202,8 +249,11 @@ class OBJToCSVGenerator:
         remaining_digits = 18 - 2 - 2 - 3  # 11 digits remaining
         coord_part = coord_str[:remaining_digits].ljust(remaining_digits, '0')
         
-        nop = kota_code + kecamatan_code + kelurahan_code + coord_part
-        return nop
+        nop_digits = kota_code + kecamatan_code + kelurahan_code + coord_part
+        
+        # Format the NOP using the format_nop function
+        formatted_nop = self.format_nop(nop_digits)
+        return formatted_nop
     
     def process_obj_file(self, obj_path):
         """Process a single OBJ file and return CSV row data"""
@@ -233,21 +283,30 @@ class OBJToCSVGenerator:
         admin_info = self.find_overlapping_admin(centroid_x, centroid_y)
         print(f"  - Administrative area: {admin_info}")
         
+        # Generate random Indonesian name
+        owner_name = self.generate_indonesian_name()
+        print(f"  - Generated owner name: {owner_name}")
+        
         # Generate NIB and NOP
         nib = self.generate_nib(admin_info['kota'], admin_info['kecamatan'], centroid_x, centroid_y)
         nop = self.generate_nop(admin_info['kota'], admin_info['kecamatan'], 
                                admin_info['kelurahan'], centroid_x, centroid_y)
         
+        print(f"  - NIB: {nib}")
+        print(f"  - NOP: {nop}")
+        
         return {
-            'UUID': filename,
-            'Kelurahan': admin_info['kelurahan'],
-            'Kecamatan': admin_info['kecamatan'],
-            'Kota': admin_info['kota'],
-            'Luas_bangunan': round(ground_area, 2),
-            'Tinggi_bangunan': round(building_height, 2),
-            'Jumlah_lantai': jumlah_lantai,
-            'NIB': nib,
-            'NOP': nop
+            'uuid': filename,
+            'ownerName': owner_name,
+            'village': admin_info['kelurahan'],
+            'district': admin_info['kecamatan'],
+            'city': admin_info['kota'],
+            'province': "DKJ",
+            'buildingArea': round(ground_area, 2),
+            'buildingHeight': round(building_height, 2),
+            'floorCount': jumlah_lantai,
+            'nib': nib,
+            'nop': nop
         }
     
     def generate_csv_for_all_obj(self):
@@ -282,8 +341,9 @@ class OBJToCSVGenerator:
         if all_data:
             csv_filename = os.path.join(self.output_folder_path, "buildings_data.csv")
             
-            fieldnames = ['UUID', 'Kelurahan', 'Kecamatan', 'Kota', 'Luas_bangunan', 
-                         'Tinggi_bangunan', 'Jumlah_lantai', 'NIB', 'NOP']
+            # Updated fieldnames to match the new column structure
+            fieldnames = ['uuid', 'ownerName', 'village', 'district', 'city', 'province',
+                         'buildingArea', 'buildingHeight', 'floorCount', 'nib', 'nop']
             
             with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -298,6 +358,13 @@ class OBJToCSVGenerator:
             print(f"Successfully processed: {successful_count}")
             print(f"Failed to process: {len(obj_files) - successful_count}")
             print(f"Records in CSV: {len(all_data)}")
+            
+            # Show sample of generated data
+            if all_data:
+                print(f"\nSample record:")
+                sample = all_data[0]
+                for key, value in sample.items():
+                    print(f"  {key}: {value}")
         else:
             print("\n" + "=" * 50)
             print("ERROR: No valid data to write to CSV")
@@ -305,12 +372,17 @@ class OBJToCSVGenerator:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Generate CSV files from OBJ files with administrative boundary data',
+        description='Generate CSV files from OBJ files with administrative boundary data and Indonesian names',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python obj_to_csv_generator.py --geojson data.geojson --obj_dir ./objects --output ./results
-  python obj_to_csv_generator.py --geojson "Kelurahan DKI.geojson" --obj_dir "C:/models" --output "C:/output"
+  python attribute_gen.py --geojson data.geojson --obj_dir ./objects --output ./results
+  python attribute_gen.py --geojson "Kelurahan DKI.geojson" --obj_dir "C:/models" --output "C:/output"
+
+Features:
+  - Random Indonesian owner names (2-3 words)
+  - Formatted NOP: XX.XX.XXX.XXX.XXX-XXXX.X
+  - Updated column names (uuid, ownerName, village, district, city, buildingArea, buildingHeight, floorCount, nib, nop)
         """
     )
     
@@ -347,7 +419,7 @@ Examples:
         print(f"Error: OBJ path is not a directory: {args.obj_dir}")
         return 1
     
-    print("OBJ to CSV Generator")
+    print("OBJ to CSV Generator with Indonesian Names")
     print("=" * 50)
     print(f"GeoJSON file: {args.geojson}")
     print(f"OBJ directory: {args.obj_dir}")
