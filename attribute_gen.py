@@ -331,11 +331,11 @@ class OBJToCSVGenerator:
                 if row_data:
                     all_data.append(row_data)
                     successful_count += 1
-                    print(f"  ✓ Successfully processed")
+                    print(f"  [OK] Successfully processed")
                 else:
-                    print(f"  ✗ Failed to process")
+                    print(f"  [ERROR] Failed to process")
             except Exception as e:
-                print(f"  ✗ Error processing {obj_file.name}: {e}")
+                print(f"  [ERROR] Error processing {obj_file.name}: {e}")
         
         # Write to CSV
         if all_data:
