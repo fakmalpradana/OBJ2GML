@@ -19,7 +19,7 @@ sp.call([
 
 # Convert OBJ ke CityGML
 sp.call([
-    "go", "run", "obj2gml.go",
+    "go", "run", "obj2gml-waterbody.go",
     "-input", f"{jln}_translated",
     "-output", f"export/{jln}_translated_gml"
 ])
