@@ -121,7 +121,7 @@ type AuxiliaryTrafficArea struct {
 }
 
 type Railway struct {
-    ID       string `xml:"gml:id,attr,omitempty"`
+    GmlID       string `xml:"gml:id,attr,omitempty"`
     Name     string `xml:"gml:name,omitempty"`
     Class    string `xml:"tran:class,omitempty"`
     Function string `xml:"tran:function,omitempty"`
@@ -132,7 +132,7 @@ type Railway struct {
 }
 
 type Track struct {
-    ID       string `xml:"gml:id,attr,omitempty"`
+    GmlID       string `xml:"gml:id,attr,omitempty"`
     Name     string `xml:"gml:name,omitempty"`
     Class    string `xml:"tran:class,omitempty"`
     Function string `xml:"tran:function,omitempty"`
@@ -142,7 +142,7 @@ type Track struct {
 }
 
 type Square struct {
-    ID       string `xml:"gml:id,attr,omitempty"`
+    GmlID       string `xml:"gml:id,attr,omitempty"`
     Name     string `xml:"gml:name,omitempty"`
     Class    string `xml:"tran:class,omitempty"`
     Function string `xml:"tran:function,omitempty"`
@@ -235,7 +235,14 @@ func main() {
 		fileNameWithoutExt := strings.TrimSuffix(baseFileName, filepath.Ext(baseFileName))
 		outputFile := filepath.Join(*outputDir, fileNameWithoutExt+".gml")
 
-		err := convertOBJToCityGML(objFile, outputFile, fileNameWithoutExt, *epsgCode)
+	    // deteksi otomatis dari group
+		transportType, err := detectTransportTypeFromOBJ(objFile)
+		if err != nil {
+			fmt.Printf("Error detecting transport type for %s: %v\n", baseFileName, err)
+			continue
+		}
+
+		err = convertOBJToCityGML(objFile, outputFile, fileNameWithoutExt, *epsgCode, transportType)
 		if err != nil {
 			fmt.Printf("Error processing %s: %v\n", baseFileName, err)
 			errorFiles = append(errorFiles, baseFileName)
@@ -249,6 +256,43 @@ func main() {
 	if len(errorFiles) > 0 {
 		fmt.Printf("Failed to convert %d files: %v\n", len(errorFiles), errorFiles)
 	}
+}
+
+func detectTransportTypeFromOBJ(path string) (string, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return "", err
+    }
+    defer file.Close()
+
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+        line := scanner.Text()
+        if strings.HasPrefix(line, "g ") {
+            groupName := strings.ToLower(line[2:]) // ambil setelah "g "
+
+            switch {
+            case strings.Contains(groupName, "krl"),
+                strings.Contains(groupName, "mrt"),
+                strings.Contains(groupName, "lrt"),
+                strings.Contains(groupName, "rail"):
+                return "railway", nil
+
+            case strings.Contains(groupName, "jl"),
+                strings.Contains(groupName, "jalan"),
+                strings.Contains(groupName, "jln"),
+                strings.Contains(groupName, "road"):
+                return "road", nil
+            }
+        }
+    }
+
+    if err := scanner.Err(); err != nil {
+        return "", err
+    }
+
+    // default
+    return "", fmt.Errorf("no valid transport type found in OBJ: %s", path)
 }
 
 // Calculate normal vector for a triangle
@@ -305,7 +349,9 @@ func ensureConsistentWindingOrder(vertices []OBJVertex, face OBJFace) OBJFace {
 }
 
 // Convert OBJ file to CityGML (Road)
-func convertOBJToCityGML(inputPath, outputPath, roadID, epsgCode string) error {
+func convertOBJToCityGML(inputPath, outputPath, objectID, epsgCode, transportType string) error {
+	var member CityObjectMemberTran
+
 	// Read and parse OBJ file
 	vertices, faces, err := parseOBJFile(inputPath)
 	if err != nil {
@@ -359,60 +405,114 @@ func convertOBJToCityGML(inputPath, outputPath, roadID, epsgCode string) error {
 		},
 	}
 
-	// Create Road object 🚀
-	road := Road{
-		GmlID:    roadID,
-		Class:    "road",
-		Function: "transport",
-		Usage:    "public",
-		Lod1MultiSurface: &LodMultiSurface{
-			MultiSurface: MultiSurface{
-				ID: fmt.Sprintf("%s-ms", roadID),
+	switch strings.ToLower(transportType) {
+	case "railway":
+		railway := Railway{
+			GmlID:       objectID,
+			Class:    "railway",
+			Function: "transport",
+			Usage:    "public",
+			Lod1MultiSurf: &LodMultiSurface{
+				MultiSurface: MultiSurface{ID: fmt.Sprintf("%s-ms", objectID)},
 			},
-		},
-	}
-
-	// Convert faces -> gml:surfaceMember
-	for i, face := range faces {
-		face = ensureConsistentWindingOrder(vertices, face)
-
-		polygonID := fmt.Sprintf("%s-polygon-%d", roadID, i)
-
-		var posListBuilder strings.Builder
-		for _, vIdx := range face {
-			if vIdx > 0 && vIdx <= len(vertices) {
-				v := vertices[vIdx-1]
-				posListBuilder.WriteString(fmt.Sprintf("%f %f %f ", v.X, v.Y, v.Z))
-			}
-		}
-		// close polygon ring
-		if len(face) > 0 {
-			vIdx := face[0]
-			if vIdx > 0 && vIdx <= len(vertices) {
-				v := vertices[vIdx-1]
-				posListBuilder.WriteString(fmt.Sprintf("%f %f %f", v.X, v.Y, v.Z))
-			}
 		}
 
-		surfaceMember := SurfaceMember{
-			Polygon: Polygon{
-				ID: polygonID,
-				Exterior: PolygonExterior{
-					LinearRing: LinearRing{
-						PosList: posListBuilder.String(),
+		// isi polygons dari faces
+		for i, face := range faces {
+			face = ensureConsistentWindingOrder(vertices, face)
+
+			polygonID := fmt.Sprintf("%s-polygon-%d", objectID, i)
+
+			var posListBuilder strings.Builder
+			for _, vIdx := range face {
+				if vIdx > 0 && vIdx <= len(vertices) {
+					v := vertices[vIdx-1]
+					posListBuilder.WriteString(fmt.Sprintf("%f %f %f ", v.X, v.Y, v.Z))
+				}
+			}
+			// close polygon ring
+			if len(face) > 0 {
+				vIdx := face[0]
+				if vIdx > 0 && vIdx <= len(vertices) {
+					v := vertices[vIdx-1]
+					posListBuilder.WriteString(fmt.Sprintf("%f %f %f", v.X, v.Y, v.Z))
+				}
+			}
+			posList := strings.TrimSpace(posListBuilder.String())
+
+			surfaceMember := SurfaceMember{
+				Polygon: Polygon{
+					ID: polygonID,
+					Exterior: PolygonExterior{
+						LinearRing: LinearRing{
+							PosList: posList,
+						},
 					},
 				},
+			}
+
+			railway.Lod1MultiSurf.MultiSurface.SurfaceMember =
+				append(railway.Lod1MultiSurf.MultiSurface.SurfaceMember, surfaceMember)
+		}
+
+		member = CityObjectMemberTran{Railway: &railway}
+
+	default: // fallback ke Road
+		road := Road{
+			GmlID:    objectID,
+			Class:    "road",
+			Function: "transport",
+			Usage:    "public",
+			Lod1MultiSurface: &LodMultiSurface{
+				MultiSurface: MultiSurface{ID: fmt.Sprintf("%s-ms", objectID)},
 			},
 		}
 
-		road.Lod1MultiSurface.MultiSurface.SurfaceMember =
-    		append(road.Lod1MultiSurface.MultiSurface.SurfaceMember, surfaceMember)
+		for i, face := range faces {
+			face = ensureConsistentWindingOrder(vertices, face)
+
+			polygonID := fmt.Sprintf("%s-polygon-%d", objectID, i)
+
+			var posListBuilder strings.Builder
+			for _, vIdx := range face {
+				if vIdx > 0 && vIdx <= len(vertices) {
+					v := vertices[vIdx-1]
+					posListBuilder.WriteString(fmt.Sprintf("%f %f %f ", v.X, v.Y, v.Z))
+				}
+			}
+			// close polygon ring
+			if len(face) > 0 {
+				vIdx := face[0]
+				if vIdx > 0 && vIdx <= len(vertices) {
+					v := vertices[vIdx-1]
+					posListBuilder.WriteString(fmt.Sprintf("%f %f %f", v.X, v.Y, v.Z))
+				}
+			}
+			posList := strings.TrimSpace(posListBuilder.String())
+
+			surfaceMember := SurfaceMember{
+				Polygon: Polygon{
+					ID: polygonID,
+					Exterior: PolygonExterior{
+						LinearRing: LinearRing{
+							PosList: posList,
+						},
+					},
+				},
+			}
+			
+
+			road.Lod1MultiSurface.MultiSurface.SurfaceMember =
+				append(road.Lod1MultiSurface.MultiSurface.SurfaceMember, surfaceMember)
+		}
+
+		member = CityObjectMemberTran{Road: &road}
 	}
 
-	// 🚀 Add Road into CityModel (pakai CityObjectMemberTran, bukan Building!)
+	// 🚀 Tambahkan transportasi (Road/Railway) ke CityModel
 	cityModel.CityObjectMember = append(
 		cityModel.CityObjectMember,
-		CityObjectMemberTran{Road: &road},
+		member,
 	)
 
 	// Generate XML
